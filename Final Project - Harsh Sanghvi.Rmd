@@ -1,0 +1,402 @@
+---
+title: "Data Science Project"
+author: "Harsh Sanghvi"
+date: '2022-10-19'
+output: pdf_document
+---
+
+#Objective and Business Plan [1.	Discuss the business problem/goal]
+
+The goal of this project is to come up with a recommendation system for users based on the learning of their previous viewing pattern and browsing history. The observations are based the input of the user. The business objective of this  project is to come up with the most appropriate recommendation algorithm for the user to watch and continue their subscription. This project applies the principal of item based collaborative recommendation system.
+
+#Library Setup 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(recommenderlab)
+library(ggplot2)
+library(data.table)
+library(reshape2)
+```
+# Data retrieval and loading data [2.	identify where the dataset was retrieved from (2 points)]
+# DATA IMPORTATED AND SAVED [3.	identify the code that imported and saved your dataset in R (3 points)]
+# Data description 4.	describe your data set (using the common attributes such as #rows, #columns, variable names, types, means, SD, min/max, NAs, etc...) (10 points)
+The dataset is based on MovieLens with movies and reviews.https://drive.google.com/file/d/1Dn1BZD3YxgBQJSIjbfNnmCFlDW2jdQGD/view is where the data set is lies which was last udpated on July 2019. We save it in the working directory, read the csv under two variables and get the summary of the data in the along with column headers. We will currently store the movies and ratio in two different dataframes and variables.
+
+
+```{r, echo = TRUE}
+getwd()
+setwd("/Users/harshsanghvi/Downloads")                      
+movie_data <- read.csv("movies.csv",stringsAsFactors=FALSE)
+rating_data <- read.csv("ratings.csv")
+str(movie_data)
+summary(movie_data)
+head(movie_data)
+summary(rating_data)
+head(rating_data)
+
+```
+# Movies data set built and ratings information [4.	describe your data set (using the common attributes such as #rows, #columns, variable names, types, means, SD, min/max, NAs, etc...) (10 points)]
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+We have data about `r nrow(movie_data)` for movies and `r nrow(rating_data)` for the total number of ratings
+
+In the Data Preprocessing steps, we have covert the integars for movieID and userID columns and convert the genres in movie_data df into a more usable format by the user. We are basically getting a list of movies that the user watched and them listing the type of genre of that movie based on the attribute movieID
+
+#Data Pre-Processing part 1 - genre for film Matrix
+```{r, echo = TRUE}
+movie_genre <- as.data.frame(movie_data$genres, stringsAsFactors=FALSE)
+library(data.table)
+movie_genre2 <- as.data.frame(tstrsplit(movie_genre[,1], '[|]', 
+                                   type.convert=TRUE), 
+                         stringsAsFactors=FALSE) #DataFlair
+colnames(movie_genre2) <- c(1:10)
+
+list_genre <- c("Action", "Adventure", "Animation", "Children", 
+                "Comedy", "Crime","Documentary", "Drama", "Fantasy",
+                "Film-Noir", "Horror", "Musical", "Mystery","Romance",
+                "Sci-Fi", "Thriller", "War", "Western")
+genre_mat1 <- matrix(0,10330,18)
+genre_mat1[1,] <- list_genre
+colnames(genre_mat1) <- list_genre
+
+for (index in 1:nrow(movie_genre2)) {
+  for (col in 1:ncol(movie_genre2)) {
+    gen_col = which(genre_mat1[1,] == movie_genre2[index,col]) 
+    genre_mat1[index+1,gen_col] <- 1
+}
+}
+genre_mat2 <- as.data.frame(genre_mat1[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
+for (col in 1:ncol(genre_mat2)) {
+  genre_mat2[,col] <- as.integer(genre_mat2[,col]) #convert from characters to integers
+} 
+str(genre_mat2)
+
+```
+
+
+We now create a search matrix to all the types of genres a movie satisfies. 
+
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+
+#Data Preprocessing part 2 - search matrix
+```{r, echo = TRUE}
+SearchMatrix <- cbind(movie_data[,1:2], genre_mat2[])
+head(SearchMatrix)    #DataFlair
+
+```
+
+As movie have multiple genres, we have to convert our matrix in a sparse. It will be reresentated as realRatingMatrix
+
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+#Data Preprocessing part 3 - sparse matrix
+
+```{r, echo = TRUE}
+ratingMatrix <- dcast(rating_data, userId~movieId, value.var = "rating", na.rm=FALSE)
+ratingMatrix <- as.matrix(ratingMatrix[,-1]) #remove userIds
+#Convert rating matrix into a recommenderlab sparse matrix
+ratingMatrix <- as(ratingMatrix, "realRatingMatrix")
+ratingMatrix
+
+
+```
+
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+#Data Preprocessing important parameter summary
+
+```{r, echo = TRUE}
+
+recommendation_model <- recommenderRegistry$get_entries(dataType = "realRatingMatrix")
+names(recommendation_model)
+lapply(recommendation_model, "[[", "description")
+
+```
+
+#6.	discuss the modeling (10 points)
+
+We will only be using Item Based Collolaborative Filtering
+
+#Using Item Based Colloborative Filtering
+```{r, echo = TRUE}
+recommendation_model$IBCF_realRatingMatrix$parameters
+
+```
+
+We plan on suggesting movies based of the collective prerference of other users. Thus we find users with similar tastes.
+
+#6.	discuss the modeling (10 points)
+
+#Data Analysis - Similarity between users
+
+```{r, echo = TRUE}
+similarity_mat <- similarity(ratingMatrix[1:4, ],
+                               method = "cosine",
+                               which = "users")
+as.matrix(similarity_mat)
+image(as.matrix(similarity_mat), main = "User's Similarities")
+
+```
+
+#Recommendation based on rating values and then viewing it
+#6.	discuss the modeling (10 points)
+
+```{r, echo = TRUE}
+rating_values <- as.vector(ratingMatrix@data)
+unique(rating_values) # extracting unique ratings
+Table_of_Ratings <- table(rating_values) # creating a count of movie ratings
+Table_of_Ratings
+
+```
+
+#Most viewed movie
+#6.	discuss the modeling (10 points)
+
+We want to explore the highest viewed movie and want to visualize it in a table which will be in descending order
+
+```{r, echo = TRUE}
+library(ggplot2)
+movie_views <- colCounts(ratingMatrix) # count views for each movie
+table_views <- data.frame(movie = names(movie_views),
+                          views = movie_views) # create dataframe of views
+table_views <- table_views[order(table_views$views,
+                                 decreasing = TRUE), ] # sort by number of views
+table_views$title <- NA
+for (index in 1:10325){
+  table_views[index,3] <- as.character(subset(movie_data,
+                                         movie_data$movieId == table_views[index,1])$title)
+}
+table_views[1:6,]
+```
+
+#Most View Movie Analysis
+
+The visual below shows the top 6 movies viewed most
+
+```{r, echo = TRUE}
+ggplot(table_views[1:6, ], aes(x = title, y = views)) +
+  geom_bar(stat="identity", fill = 'steelblue') +
+  geom_text(aes(label=views), vjust=-0.3, size=3.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+
+  ggtitle("Total Views of the Top Films")
+
+```
+
+#Visual on movie rating  with 25 rows and 25 columns
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+
+We want to now visualize the heatmap of the movie rating 
+
+```{r, echo = TRUE}
+image(ratingMatrix[1:20, 1:25], axes = FALSE, main = "Heatmap of the first 25 rows and 25 columns")
+```
+
+#Data Preparation
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+
+We prepare the raw data in the following ways
+First we select the useful data for our method, then we normalize the data and then Binarizing the dataset
+
+#Data preparatation part 1 - selecting useful data
+
+We set a threshold for the minimum number of users who rate film as 50. The idea being that 50 which is the minimum number of views help us filter starting from the least watched films
+
+```{r, echo = TRUE}
+movie_ratings <- ratingMatrix[rowCounts(ratingMatrix) > 50,
+                             colCounts(ratingMatrix) > 50]
+movie_ratings
+```
+
+
+the data set now has 420 users and 447 films based on our criteria. We can now move on to delineate our matrix for the chosen usres
+
+#Data preparation part 2 - delineate matrix
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+
+```{r, echo=TRUE}
+minimum_movies<- quantile(rowCounts(movie_ratings), 0.98)
+minimum_users <- quantile(colCounts(movie_ratings), 0.98)
+image(movie_ratings[rowCounts(movie_ratings) > minimum_movies,
+                     colCounts(movie_ratings) > minimum_users],
+main = "Heatmap of the top users and movies")
+```
+
+#Data preparation part 3 - Visualizing distribution of average ratings per user
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+
+```{r, echo=TRUE}
+average_ratings <- rowMeans(movie_ratings)
+qplot(average_ratings, fill=I("steelblue"), col=I("red")) +
+  ggtitle("Distribution of the average rating per user")
+```
+
+#Data Normalization
+#iscuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+
+Some user tend to rate any movie watched by them either too high to or too low. to avoid bias in implementing the model, we standardize the numerical values in a column to a common scale. We take action avoid distortion.
+
+```{r, echo=TRUE}
+
+normalized_ratings <- normalize(movie_ratings)
+sum(rowMeans(normalized_ratings) > 0.00001)
+
+image(normalized_ratings[rowCounts(normalized_ratings) > minimum_movies,
+                          colCounts(normalized_ratings) > minimum_users],
+main = "Normalized Ratings of the Top Users")
+
+```
+
+#Data Binarization
+#5.	discuss any data preparation, missing values and errors (10 points) (if the dataset was clean and there is no prep in the code, include a comment that explains what likely data preparation was done. What are the common issues with raw data?)
+
+We assign either 1 or 0. 1 is where the rating is above 3 else the value is taken as 0 if it is less
+
+
+```{r, echo=TRUE}
+
+binary_minimum_movies <- quantile(rowCounts(movie_ratings), 0.95)
+binary_minimum_users <- quantile(colCounts(movie_ratings), 0.95)
+#movies_watched <- binarize(movie_ratings, minRating = 1)
+
+good_rated_films <- binarize(movie_ratings, minRating = 3)
+image(good_rated_films[rowCounts(movie_ratings) > binary_minimum_movies,
+colCounts(movie_ratings) > binary_minimum_users],
+main = "Heatmap of the top users and movies")
+#heat map is used to visualize the user and the movies they have rated
+
+```
+
+#6.	discuss the modeling (10 points)
+#Final Model - Part 1 Collaborative Filtering system
+
+
+the first step is to build a similar-item table of the customers who viewed them into a combination of similar items and use a 80% training set and 20% test set
+
+#For each Item i1 present in the product catalog, purchased by customer C.
+#And, for each item i2 also purchased by the customer C.
+#Create record that the customer purchased items i1 and i2.
+#Calculate the similarity between i1 and i2.
+
+```{r, echo=TRUE}
+
+sampled_data<- sample(x = c(TRUE, FALSE),
+                      size = nrow(movie_ratings),
+                      replace = TRUE,
+                      prob = c(0.8, 0.2))
+training_data <- movie_ratings[sampled_data, ]
+testing_data <- movie_ratings[!sampled_data, ]
+
+```
+
+#Final Model - Part 2 Building Recommendation system
+#6.	discuss the modeling (10 points)
+
+We determine how many number of items to compute similarities for and then store the value. 
+
+```{r, echo=TRUE}
+
+recommendation_system <- recommenderRegistry$get_entries(dataType ="realRatingMatrix")
+recommendation_system$IBCF_realRatingMatrix$parameters
+
+recommen_model <- Recommender(data = training_data,
+                          method = "IBCF",
+                          parameter = list(k = 30))
+recommen_model
+class(recommen_model)
+
+```
+
+#Final Model - Similarity Matrix
+#6.	discuss the modeling (10 points)
+
+Using the getModel() function, we will retrieve the recommen_model. We will then find the class and dimensions of our similarity matrix that is contained within model_info. Finally, we will generate a heatmap, that will contain the top 20 items and visualize the similarity shared between them.
+
+```{r, echo=TRUE}
+
+model_info <- getModel(recommen_model)
+class(model_info$sim) #contains similarity matrix
+dim(model_info$sim) 
+top_items <- 20
+image(model_info$sim[1:top_items, 1:top_items],
+   main = "Heatmap of the first rows and columns")
+```
+
+#Final Model - Simiarlity Matrix with 3 plus rating
+@6.	discuss the modeling (10 points)
+
+```{r, echo=TRUE}
+sum_rows <- rowSums(model_info$sim > 0)
+table(sum_rows)
+
+sum_cols <- colSums(model_info$sim > 0)
+qplot(sum_cols, fill=I("steelblue"), col=I("red"))+ ggtitle("Distribution of the column count")
+```
+
+#6.	discuss the modeling (10 points)
+#Recommendation Finalization - Number of users - Selecting number of recommendation and predict function for suggested movies
+#7.	produce and discuss the output (10 points)
+We recommend 10 movies based on preferences
+
+```{r,echo=TRUE}
+top_recommendations <- 10 # the number of items to recommend to each user
+predicted_recommendations <- predict(object = recommen_model,
+                          newdata = testing_data,
+                          n = top_recommendations)
+predicted_recommendations
+
+```
+#Recommendation Finalization - Part 2 - Type of movies for 1 user
+#7.	produce and discuss the output (10 points)
+```{r,echo=TRUE}
+user1 <- predicted_recommendations@items[[1]] # recommendation for the first user
+movies_user1 <- predicted_recommendations@itemLabels[user1]
+movies_user2 <- movies_user1
+for (index in 1:10){
+  movies_user2[index] <- as.character(subset(movie_data,
+                                         movie_data$movieId == movies_user1[index])$title)
+}
+movies_user2
+```
+
+#Recommendation finalizaiton for 80 user for the movies based on others liking
+#7.	produce and discuss the output (10 points)
+```{r, echo=TRUE}
+recommendation_matrix <- sapply(predicted_recommendations@items,
+                      function(x){ as.integer(colnames(movie_ratings)[x]) }) # matrix with the recommendations for each user
+#dim(recc_matrix)
+recommendation_matrix[,1:4]
+```
+
+# Movie Distribution of the number of items for IBCF
+#Final Output based on test train data
+#7.	produce and discuss the output (10 points)
+
+WE finially ist 
+
+```{r, echo=TRUE}
+number_of_items <- factor(table(recommendation_matrix))
+
+chart_title <- "Distribution of the Number of Items for IBCF"
+
+qplot(number_of_items, fill=I("steelblue"), col=I("red")) + ggtitle(chart_title)
+
+
+```
+
+#Final output 
+#7.	produce and discuss the output (10 points)
+
+```{r, echo=TRUE}
+
+number_of_items_sorted <- sort(number_of_items, decreasing = TRUE)
+number_of_items_top <- head(number_of_items_sorted, n = 4)
+table_top <- data.frame(as.integer(names(number_of_items_top)),
+number_of_items_top)
+for(i in 1:4) {
+table_top[i,1] <- as.character(subset(movie_data,
+movie_data$movieId == table_top[i,1])$title)
+}
+
+colnames(table_top) <- c("Movie Title", "No. of Items")
+head(table_top)
+```
+
